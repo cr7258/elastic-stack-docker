@@ -1,0 +1,147 @@
+version: '3.8'
+services:
+  # 集群 cluster01
+  # Elasticsearch
+  es01:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.16.2
+    container_name: es01
+    environment:
+      # 节点名
+      - node.name=es01
+      # 集群名
+      - cluster.name=cluster01
+      # 指定单节点启动
+      - discovery.type=single-node
+      # 开启内存锁定
+      - bootstrap.memory_lock=true
+      # 设置内存大小
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+      # 启用安全
+      - xpack.security.enabled=true
+      # 设置 elastic 用户密码
+      - ELASTIC_PASSWORD=test123
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    # 映射到主机名的端口 宿主机端口:容器端口
+    ports:
+      - 9200:9200
+    volumes:
+      - data01:/usr/share/elasticsearch/data
+    networks:
+      - elastic
+  # Kibana
+  kib01:
+    image: docker.elastic.co/kibana/kibana:7.16.2
+    container_name: kib01
+    ports:
+      - 5601:5601
+    environment:
+      # Elasticsearch 连接信息
+      ELASTICSEARCH_URL: http://es01:9200
+      ELASTICSEARCH_HOSTS: '["http://es01:9200"]'
+      ELASTICSEARCH_USERNAME: elastic
+      ELASTICSEARCH_PASSWORD: test123
+    networks:
+      - elastic
+
+  # 集群 cluster2
+  es02:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.16.2
+    container_name: es02
+    environment:
+      - node.name=es02
+      - cluster.name=cluster02
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=test123
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - 9201:9200
+    volumes:
+      - data02:/usr/share/elasticsearch/data
+    networks:
+      - elastic
+
+  kib02:
+    image: docker.elastic.co/kibana/kibana:7.16.2
+    container_name: kib02
+    ports:
+      - 5602:5601
+    environment:
+      ELASTICSEARCH_URL: http://es02:9200
+      ELASTICSEARCH_HOSTS: '["http://es02:9200"]'
+      ELASTICSEARCH_USERNAME: elastic
+      ELASTICSEARCH_PASSWORD: test123
+    networks:
+      - elastic
+  
+  zookeeper:
+    image: bitnami/zookeeper:latest
+    container_name: zookeeper
+    user: root
+    ports:
+      - 2181:2181
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+    networks:
+      - elastic
+  
+  # 消息队列
+  kafka:
+    image: bitnami/kafka:latest
+    container_name: kafka
+    user: root
+    ports:
+      - 9092:9092
+    environment:
+      - KAFKA_BROKER_ID=1
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    depends_on:
+      - zookeeper
+    networks:
+      - elastic
+
+  # 消费者
+  logstash01:
+    image: docker.elastic.co/logstash/logstash:7.16.2
+    container_name: logstash01
+    ports:
+      - 9600:9600
+    volumes:
+      - ./logstash-cluster01.conf:/usr/share/logstash/pipeline/logstash.conf
+      #- ./logstash-cluster01.yml:/usr/share/logstash/config/logstash.yml
+    networks:
+      - elastic
+   
+  logstash02:
+    image: docker.elastic.co/logstash/logstash:7.16.2
+    container_name: logstash02
+    ports:
+      - 9601:9600
+    volumes:
+      - ./logstash-cluster02.conf:/usr/share/logstash/pipeline/logstash.conf
+     # - ./logstash-cluster02.yml:/usr/share/logstash/config/logstash.yml
+    networks:
+      - elastic
+
+# 存储卷
+volumes:
+  data01:
+    driver: local
+  data02:
+    driver: local
+
+# 网络
+networks:
+  elastic:
+    driver: bridge

@@ -1,0 +1,111 @@
+version: '3.8'
+services:
+  # 集群 cluster01
+  # Elasticsearch
+  es01:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.16.2
+    container_name: es01
+    environment:
+      # 节点名
+      - node.name=es01
+      # 集群名
+      - cluster.name=cluster01
+      # 指定单节点启动
+      - discovery.type=single-node
+      # 开启内存锁定
+      - bootstrap.memory_lock=true
+      # 设置内存大小
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+      # 启用安全
+      - xpack.security.enabled=true
+      # 设置 elastic 用户密码
+      - ELASTIC_PASSWORD=test123
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    # 映射到主机名的端口 宿主机端口:容器端口
+    ports:
+      - 9200:9200
+    volumes:
+      - data01:/usr/share/elasticsearch/data
+    networks:
+      - elastic
+  # Kibana
+  kib01:
+    image: docker.elastic.co/kibana/kibana:7.16.2
+    container_name: kib01
+    ports:
+      - 5601:5601
+    environment:
+      # Elasticsearch 连接信息
+      ELASTICSEARCH_URL: http://es01:9200
+      ELASTICSEARCH_HOSTS: '["http://es01:9200"]'
+      ELASTICSEARCH_USERNAME: elastic
+      ELASTICSEARCH_PASSWORD: test123
+    networks:
+      - elastic
+
+  # 集群 cluster02
+  es02:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.16.2
+    container_name: es02
+    environment:
+      - node.name=es02
+      - cluster.name=cluster02
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=test123
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - 9201:9200
+    volumes:
+      - data02:/usr/share/elasticsearch/data
+    networks:
+      - elastic
+
+  kib02:
+    image: docker.elastic.co/kibana/kibana:7.16.2
+    container_name: kib02
+    ports:
+      - 5602:5601
+    environment:
+      ELASTICSEARCH_URL: http://es02:9200
+      ELASTICSEARCH_HOSTS: '["http://es02:9200"]'
+      ELASTICSEARCH_USERNAME: elastic
+      ELASTICSEARCH_PASSWORD: test123
+    networks:
+      - elastic
+  # 极限网关
+  infini-gateway:
+    image: infinilabs/gateway:latest
+    container_name: infini-gateway
+    ports:
+      - 2900:2900
+      - 8000:8000
+      - 8001:8001
+      - 8002:8002
+    volumes:
+      - ./gateway.yml:/gateway.yml    
+      - data03:/software/infini-gateway    
+    networks:
+      - elastic
+
+# 存储卷
+volumes:
+  data01:
+    driver: local
+  data02:
+    driver: local
+  data03:
+    driver: local
+
+# 网络
+networks:
+  elastic:
+    driver: bridge

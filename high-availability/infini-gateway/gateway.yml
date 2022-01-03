@@ -1,0 +1,113 @@
+# 数据路径
+path.data: /software/infini-gateway/data
+# 日志路径
+path.logs: /software/infini-gateway/log
+
+# 定义 Elasticsearch 集群地址
+elasticsearch:
+# cluster01 集群
+- name: cluster01
+  enabled: true
+  endpoint: http://es01:9200
+  basic_auth:
+    username: elastic
+    password: test123
+# cluster02 集群
+- name: cluster02
+  enabled: true
+  endpoint: http://es02:9200
+  basic_auth:
+    username: elastic
+    password: test123
+
+# 定义网关入口
+entry:
+  - name: my_es_entry
+    enabled: true
+    router: my_router
+    network:
+      binding: 0.0.0.0:8000
+
+# 定义工作流
+flow:
+ # 写请求优先发给主集群, 当主集群不可用时发给备用集群
+ # 当主集群数据写入成功时，记录到队列中，异步消费写入备用集群
+  - name: write-flow
+    filter:
+      - if:
+      # 当主集群可用时
+          cluster_available: ["cluster01"]
+        then:
+          # 先将数据写入主集群
+          - elasticsearch:
+              elasticsearch: "cluster01"
+            # 写入消息队列,等待 pipeline 异步消费到备用集群
+          - queue:
+              queue_name: "cluster02-queue"
+        else:
+          - elasticsearch:
+              elasticsearch: "cluster02"
+          - queue:
+              queue_name: "cluster01-queue"
+  # 读请求优先发给主集群, 当主集群不可用时发给备用集群
+  - name: read-flow
+    filter:
+      - if:
+          cluster_available: ["cluster01"]
+        then:
+          - elasticsearch:
+              elasticsearch: "cluster01"
+        else:
+          - elasticsearch:
+              elasticsearch: "cluster02"
+
+# 路由规则
+router:
+  - name: my_router
+    # 默认路由
+    default_flow: write-flow
+    # 读请求路由
+    rules:
+      - method:
+          - "GET"
+          - "HEAD"
+        pattern:
+          - "/{any:*}"
+        flow:
+          - read-flow
+      - method:
+          - "POST"
+          - "GET"
+        pattern:
+          - "/_refresh"
+          - "/_count"
+          - "/_search"
+          - "/_msearch"
+          - "/_mget"
+          - "/{any_index}/_count"
+          - "/{any_index}/_search"
+          - "/{any_index}/_msearch"
+          - "/{any_index}/_mget"
+        flow:
+          - read-flow
+
+# 定义管道, 异步将数据写入备用集群
+pipeline:
+  - name: cluster01-consumer
+    auto_start: true
+    keep_running: true
+    processor:
+      - queue_consumer:
+          input_queue: "cluster01-queue" 
+          elasticsearch: "cluster01"
+          when:
+            cluster_available: ["cluster01"] # 当集群可用时，才消费队列中的数据
+  - name: cluster02-consumer
+    auto_start: true
+    keep_running: true
+    processor:
+      - queue_consumer:
+          input_queue: "cluster02-queue"
+          elasticsearch: "cluster02"
+          when:
+            cluster_available: ["cluster02"]
