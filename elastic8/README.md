@@ -3,9 +3,9 @@
 docker-compose up -d
 ```
 浏览器输入： 
-http://localhost:5061 访问 Kibana。
-https://localhost:9200 访问 Elasticsearch，Elasticsearch 集群 TLS 加密。
-用户名：elastic，密码：czw123456，可以在 *.env* 文件中进行设置。
+- http://localhost:5061 访问 Kibana。
+- https://localhost:9200 访问 Elasticsearch，Elasticsearch 集群 TLS 加密。
+- 用户名：elastic，密码：czw123456，可以在 *.env* 文件中进行设置。
 
 停止命令。
 ```bash
