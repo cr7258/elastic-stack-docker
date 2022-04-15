@@ -1,0 +1,50 @@
+version: '3.8'
+services:
+  es:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.6.2
+    environment:
+      # 节点名
+      - node.name=es01
+      # 集群名
+      - cluster.name=cluster01
+      # 指定单节点启动
+      - discovery.type=single-node
+      # 开启内存锁定
+      - bootstrap.memory_lock=true
+      # 设置内存大小
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+      # 磁盘水位
+      - cluster.routing.allocation.disk.watermark.low=2gb
+      - cluster.routing.allocation.disk.watermark.high=1gb
+      - cluster.routing.allocation.disk.watermark.flood_stage=512mb
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - 9200:9200
+    volumes:
+      - es01:/usr/share/elasticsearch/data
+    networks:
+      - elastic
+  # Kibana
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.6.2
+    ports:
+      - 5601:5601
+    environment:
+      # Elasticsearch 连接信息
+      ELASTICSEARCH_URL: http://es:9200
+      ELASTICSEARCH_HOSTS: '["http://es:9200"]'
+    networks:
+      - elastic
+
+# 存储卷
+volumes:
+  es01:
+    driver: local
+
+# 网络
+networks:
+  elastic:
+    driver: bridge
